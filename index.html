@@ -1,0 +1,52 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hand Cricket Online</title>
+<style>
+:root{--bg:#07130d;--card:#0f2418;--g:#22c55e;--gold:#facc15;--t:#f1f5f2}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#12351f,var(--bg));color:var(--t);font:16px system-ui,sans-serif;min-height:100vh;display:flex;justify-content:center}
+main{width:100%;max-width:520px;padding:16px}.card{background:var(--card);border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 4px 20px #0008}
+h1{font-size:28px;margin:8px 0}h2{margin:4px 0}.gold{color:var(--gold)}.muted{opacity:.7}.err{color:#fca5a5}
+input,select,button{font:inherit;border-radius:10px;border:1px solid #2d5a3c;background:#0a1a10;color:var(--t);padding:12px;width:100%;margin:4px 0}
+button{background:var(--g);color:#032;font-weight:700;border:0;cursor:pointer}button:disabled{opacity:.4}button.alt{background:#1b3a28;color:var(--t)}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.grid button{font-size:26px;padding:18px 0}.grid button.sel{outline:3px solid var(--gold)}
+.row{display:flex;gap:8px}.big{font-size:44px;font-weight:800}.balls{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.b{min-width:30px;height:30px;border-radius:15px;background:#1b3a28;display:grid;place-items:center;font-size:13px}.b.w{background:#dc2626}.b.s{background:var(--g);color:#032}
+.banner{text-align:center;font-size:20px;font-weight:800;color:var(--gold)}
+</style></head><body><main><h1>🏏 Hand Cricket <span class="gold">Online</span></h1><div id="app"></div></main>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let S=JSON.parse(localStorage.getItem('hc')||'null'),V=null,pick=null,key='',err='',recv=0,nm='',cd=new URLSearchParams(location.search).get('room')||'';
+async function api(b){const r=await fetch('/api/game',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});const j=await r.json();if(!r.ok)throw new Error(j.error||'Error');return j}
+function apply(j){if(V&&j.view.ballNo!==V.ballNo)pick=null;S={code:j.code,token:j.token};localStorage.setItem('hc',JSON.stringify(S));V=j.view;recv=Date.now();if(V.mine!==null)pick=V.mine;err='';draw()}
+async function act(b){try{apply(await api({...b,code:S&&S.code,token:S&&S.token}))}catch(e){if(b.action==='state'&&/Not in this room|Room not found/.test(e.message))return leave();err=e.message;draw(true)}}
+const create=()=>act({action:'create',name:nm,settings:{overs:+$('#ov').value,wickets:+$('#wk').value,timer:+$('#tm').value}});
+const join=()=>act({action:'join',name:nm,code:cd.trim()});
+function leave(){localStorage.removeItem('hc');S=null;V=null;pick=null;key='';draw(true)}
+const sel=(id,a,d,l)=>`<label class="muted">${l}</label><select id="${id}">${a.map(x=>`<option ${x===d?'selected':''}>${x}</option>`).join('')}</select>`;
+function home(){return `<div class="card"><p class="muted">Pick 0–6 in secret. Same number = OUT. Otherwise the batter scores their number.</p>
+<input placeholder="Your name" maxlength="20" value="${esc(nm)}" oninput="nm=this.value">
+<h2>Create room</h2>${sel('ov',[1,2,5,10,20],2,'Overs')}${sel('wk',[1,2,3,5],2,'Wickets')}${sel('tm',[5,10,15,20,30],15,'Seconds per ball')}
+<button onclick="create()">Create Room</button></div>
+<div class="card"><h2>Join room</h2><input placeholder="Room code" maxlength="6" value="${esc(cd)}" oninput="cd=this.value.toUpperCase()"><button class="alt" onclick="join()">Join Room</button></div>
+${err?`<p class="err">${esc(err)}</p>`:''}`}
+const ovs=b=>`${Math.floor(b/6)}.${b%6}`;
+function dots(h){return `<div class="balls">${h.map(x=>`<div class="b ${x.out?'w':x.runs?'s':''}">${x.out?'W':x.runs||'•'}</div>`).join('')}</div>`}
+function lastBall(){const l=V.history[V.history.length-1];if(!l)return'';const t=l.out?'WICKET!':l.timeout?'TIMEOUT – DOT':l.runs?`+${l.runs} RUNS`:'DOT BALL';return `<div class="banner">${t}<div class="muted" style="font-size:14px">Bat ${l.bat??'–'} · Bowl ${l.bowl??'–'}</div></div>`}
+function screens(){const n=i=>esc(V.players[i].name),me=V.me;let h='';
+ if(V.status==='waiting')h=`<div class="card"><h2>Room <span class="gold">${V.code}</span></h2><p class="muted">Waiting for opponent…</p><button onclick="navigator.clipboard.writeText(location.origin+'/?room='+S.code)">Copy invite link</button><button class="alt" onclick="leave()">Leave</button></div>`;
+ else if(V.status==='toss'){const w=V.tossWinner;h=`<div class="card"><div class="big">🪙 ${V.coin.toUpperCase()}</div><p><b class="gold">${n(w)}</b> won the toss.</p>${w===me?`<button onclick="act({action:'choose',pick:'bat'})">Bat first</button><button class="alt" onclick="act({action:'choose',pick:'bowl'})">Bowl first</button>`:`<p class="muted">Waiting for ${n(w)} to choose…</p>`}</div>`}
+ else if(V.status==='playing'){const inn=V.innings[V.inn-1],bat=inn.batter===me,left=V.settings.overs*6-inn.balls,locked=V.mine!==null;
+  h=`<div class="card"><div class="muted">Innings ${V.inn} · You are <b class="gold">${bat?'BATTING':'BOWLING'}</b> · ${n(inn.batter)} batting</div>
+  <div class="big">${inn.runs}/${inn.wkts} <span class="muted" style="font-size:18px">(${ovs(inn.balls)}/${V.settings.overs} ov)</span></div>
+  ${inn.target?`<div>Need <b>${Math.max(0,inn.target-inn.runs)}</b> from <b>${left}</b> balls · target ${inn.target}</div>`:`<div class="muted">${V.settings.wickets-inn.wkts} wickets left</div>`}${dots(V.history.filter(x=>x.inn===V.inn))}</div>
+  <div class="card">${lastBall()}<p>⏱ <b id="t"></b>s · ${locked?'Locked in — waiting for opponent…':V.oppLocked?'Opponent has locked in!':bat?'Pick your batting number':'Pick your bowling number'}</p>
+  <div class="grid">${[0,1,2,3,4,5,6].map(i=>`<button class="${pick===i?'sel':''}" ${locked?'disabled':''} onclick="pick=${i};draw(true)">${i}</button>`).join('')}</div>
+  <button ${pick===null||locked?'disabled':''} onclick="act({action:'submit',ball:V.ballNo,n:pick})">Lock In</button></div>`}
+ else{const r=V.result;h=`<div class="card"><div class="big gold">${r.tie?'Match tied!':`${n(r.winner)} wins`}</div><p>${r.tie?r.margin:'by '+r.margin}${!r.tie&&r.winner===me?' 🎉':''}</p>
+  ${V.innings.map((i,k)=>`<p>Innings ${k+1}: <b>${n(i.batter)}</b> ${i.runs}/${i.wkts} (${ovs(i.balls)} ov)</p>`).join('')}${dots(V.history)}
+  <button ${V.rematch[me]?'disabled':''} onclick="act({action:'rematch'})">${V.rematch[me]?'Waiting for opponent…':'Rematch'}</button><button class="alt" onclick="leave()">Back to Home</button></div>`}
+ return h+(err?`<p class="err">${esc(err)}</p>`:'')}
+function tick(){const e=$('#t');if(e&&V&&V.deadline)e.textContent=Math.max(0,Math.ceil((V.deadline-V.serverNow-(Date.now()-recv))/1000))}
+function draw(f){const k=JSON.stringify(V&&{...V,serverNow:0})+err+pick;if(!f&&k===key)return tick();key=k;$('#app').innerHTML=V?screens():home();tick()}
+setInterval(()=>{if(S)act({action:'state'})},1000);setInterval(tick,250);
+if(S)act({action:'state'});else draw(true);
+</script></body></html>
